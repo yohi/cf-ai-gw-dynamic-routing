@@ -104,6 +104,12 @@ COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG="your-goat-slug" \
 npm run deploy
 
 # 特定のルートファイルのみを指定してデプロイ
+CLOUDFLARE_API_TOKEN="your-api-token" \
+CLOUDFLARE_ACCOUNT_ID="your-account-id" \
+CLOUDFLARE_GATEWAY_ID="your-gateway-id" \
+OLLAMA_CUSTOM_PROVIDER_SLUG="your-ollama-slug" \
+OPENCODE_GO_CUSTOM_PROVIDER_SLUG="your-opencode-slug" \
+COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG="your-goat-slug" \
 node scripts/deploy.mjs --file glm-5.3-flash.json
 ```
 
