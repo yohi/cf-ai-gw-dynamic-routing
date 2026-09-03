@@ -1,0 +1,198 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "..");
+
+const isDryRun = process.argv.includes("--dry-run");
+const fileArgIndex = process.argv.indexOf("--file");
+const targetFile = fileArgIndex !== -1 ? process.argv[fileArgIndex + 1] : null;
+
+// Route JSON files to deploy
+const DEFAULT_ROUTE_FILES = [
+  "kimi-k2.7-code.json",
+  "kimi-k3.json",
+  "glm-5.2.json",
+  "glm-5.3-flash.json",
+  "deepseek-v4-flash.json",
+];
+
+const CF_API_BASE = "https://api.cloudflare.com/client/v4";
+
+function checkEnv() {
+  const required = [
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_GATEWAY_ID",
+  ];
+
+  const providerSlugs = [
+    "OLLAMA_CUSTOM_PROVIDER_SLUG",
+    "OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
+    "COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
+  ];
+
+  const missing = [...required, ...providerSlugs].filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    console.error(`❌ Error: Missing required environment variable(s): ${missing.join(", ")}`);
+    if (!isDryRun) {
+      process.exit(1);
+    }
+  }
+}
+
+function replacePlaceholders(jsonString) {
+  const replacements = {
+    REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG: process.env.OLLAMA_CUSTOM_PROVIDER_SLUG || "ollama-placeholder",
+    REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG: process.env.OPENCODE_GO_CUSTOM_PROVIDER_SLUG || "opencode-go-placeholder",
+    REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG: process.env.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG || "goat-placeholder",
+  };
+
+  let result = jsonString;
+  for (const [placeholder, value] of Object.entries(replacements)) {
+    result = result.replaceAll(placeholder, value);
+  }
+  return result;
+}
+
+async function cfRequest(endpoint, options = {}) {
+  const url = `${CF_API_BASE}${endpoint}`;
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    const errorMsg = data.errors?.map((e) => `[${e.code}] ${e.message}`).join(", ") || response.statusText;
+    throw new Error(`Cloudflare API Error (${response.status}): ${errorMsg}`);
+  }
+
+  return data.result;
+}
+
+async function getExistingRoutes(accountId, gatewayId) {
+  try {
+    const routes = await cfRequest(`/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`);
+    return Array.isArray(routes) ? routes : [];
+  } catch (err) {
+    console.error(`Failed to fetch existing routes: ${err.message}`);
+    throw err;
+  }
+}
+
+async function main() {
+  console.log(`🚀 Starting Cloudflare AI Gateway Dynamic Routing Deployment...`);
+  if (isDryRun) {
+    console.log(`🔍 Mode: DRY-RUN (No changes will be applied)`);
+  }
+
+  checkEnv();
+
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const gatewayId = process.env.CLOUDFLARE_GATEWAY_ID;
+
+  let existingRoutes = [];
+  if (!isDryRun) {
+    console.log(`📡 Fetching existing routes for gateway "${gatewayId}"...`);
+    existingRoutes = await getExistingRoutes(accountId, gatewayId);
+    console.log(`ℹ️  Found ${existingRoutes.length} existing route(s) in gateway.`);
+  }
+
+  const filesToDeploy = targetFile ? [targetFile] : DEFAULT_ROUTE_FILES;
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const file of filesToDeploy) {
+    const filePath = path.isAbsolute(file) ? file : path.resolve(rootDir, file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`❌ File not found: ${filePath}`);
+      failCount++;
+      continue;
+    }
+
+    console.log(`\n📄 Processing ${path.basename(filePath)}...`);
+    const rawContent = fs.readFileSync(filePath, "utf8");
+    const processedContent = replacePlaceholders(rawContent);
+
+    let routeData;
+    try {
+      routeData = JSON.parse(processedContent);
+    } catch (e) {
+      console.error(`❌ JSON parse error in ${file}: ${e.message}`);
+      failCount++;
+      continue;
+    }
+
+    const routeName = routeData.name;
+    const elements = routeData.elements;
+
+    if (!routeName || !Array.isArray(elements)) {
+      console.error(`❌ Invalid route format: "name" and "elements" array are required.`);
+      failCount++;
+      continue;
+    }
+
+    const payload = {
+      name: routeName,
+      elements: elements,
+    };
+
+    if (isDryRun) {
+      console.log(`[DRY-RUN] Route name: "${routeName}" with ${elements.length} element(s).`);
+      console.log(`[DRY-RUN] Payload preview (elements count: ${elements.length}):`);
+      console.log(JSON.stringify(payload, null, 2).slice(0, 300) + "\n...");
+      successCount++;
+      continue;
+    }
+
+    const existing = existingRoutes.find((r) => r.name === routeName);
+
+    try {
+      if (existing) {
+        console.log(`🔄 Updating existing route "${routeName}" (ID: ${existing.id})...`);
+        const result = await cfRequest(
+          `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes/${existing.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          }
+        );
+        console.log(`✅ Successfully updated route "${routeName}" (ID: ${result.id || existing.id})`);
+      } else {
+        console.log(`✨ Creating new route "${routeName}"...`);
+        const result = await cfRequest(
+          `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`,
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          }
+        );
+        console.log(`✅ Successfully created route "${routeName}" (ID: ${result.id})`);
+      }
+      successCount++;
+    } catch (err) {
+      console.error(`❌ Failed to deploy route "${routeName}": ${err.message}`);
+      failCount++;
+    }
+  }
+
+  console.log(`\n========================================`);
+  console.log(`📊 Deployment Summary: ${successCount} succeeded, ${failCount} failed`);
+  console.log(`========================================`);
+
+  if (failCount > 0) {
+    process.exit(1);
+  }
+}
+
+main().catch((err) => {
+  console.error(`❌ Unexpected error:`, err);
+  process.exit(1);
+});
