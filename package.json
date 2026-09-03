@@ -1,0 +1,14 @@
+{
+  "name": "cf-ai-gw-dynamic-routing",
+  "version": "1.0.0",
+  "description": "Cloudflare AI Gateway Dynamic Routing configurations and deployment automation",
+  "type": "module",
+  "scripts": {
+    "deploy": "node scripts/deploy.mjs",
+    "dry-run": "node scripts/deploy.mjs --dry-run"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

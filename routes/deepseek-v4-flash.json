@@ -1,0 +1,140 @@
+{
+  "id": "REPLACE_WITH_ROUTE_ID_DEEPSEEK_V4_FLASH",
+  "name": "deepseek-v4-flash",
+  "elements": [
+    {
+      "id": "start",
+      "type": "start",
+      "outputs": {
+        "next": {
+          "elementId": "split"
+        }
+      }
+    },
+    {
+      "id": "split",
+      "type": "percentage",
+      "outputs": {
+        "30%": {
+          "elementId": "go_primary"
+        },
+        "70%": {
+          "elementId": "goat_primary"
+        }
+      }
+    },
+    {
+      "id": "go_primary",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
+        "model": "deepseek-v4-flash",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "goat_after_go"
+        }
+      }
+    },
+    {
+      "id": "goat_after_go",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "ollama_emergency_after_go"
+        }
+      }
+    },
+    {
+      "id": "ollama_emergency_after_go",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG",
+        "model": "deepseek-v4-flash",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "end"
+        }
+      }
+    },
+    {
+      "id": "goat_primary",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
+        "model": "deepseek/deepseek-v4-flash",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "go_after_goat"
+        }
+      }
+    },
+    {
+      "id": "go_after_goat",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
+        "model": "deepseek-v4-flash",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "ollama_emergency_after_goat"
+        }
+      }
+    },
+    {
+      "id": "ollama_emergency_after_goat",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG",
+        "model": "deepseek-v4-flash",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "end"
+        }
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "outputs": {}
+    }
+  ]
+}

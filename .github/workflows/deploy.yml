@@ -1,0 +1,101 @@
+name: Deploy Cloudflare AI Gateway Dynamic Routes
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "routes/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - "routes/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run in dry-run mode (validate without deploying)"
+        type: boolean
+        default: false
+        required: false
+      target_file:
+        description: "Specific route file to deploy (e.g., glm-5.3-flash.json, leave empty for all)"
+        type: string
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate JSON syntax
+        run: |
+          node -e '
+          const fs = require("fs");
+          const path = require("path");
+          const routesDir = "./routes";
+          if (fs.existsSync(routesDir)) {
+            const files = fs.readdirSync(routesDir).filter(f => f.endsWith(".json"));
+            for (const f of files) {
+              JSON.parse(fs.readFileSync(path.join(routesDir, f), "utf8"));
+              console.log(`✓ routes/${f} is valid JSON`);
+            }
+          }
+          '
+
+      # Pull Request or dry-run requested: Execute Dry-Run
+      - name: Run Dry-Run Verification
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_GATEWAY_ID: ${{ secrets.CLOUDFLARE_GATEWAY_ID || vars.CLOUDFLARE_GATEWAY_ID }}
+          OLLAMA_CUSTOM_PROVIDER_SLUG: ${{ secrets.OLLAMA_CUSTOM_PROVIDER_SLUG || vars.OLLAMA_CUSTOM_PROVIDER_SLUG || 'ollama' }}
+          OPENCODE_GO_CUSTOM_PROVIDER_SLUG: ${{ secrets.OPENCODE_GO_CUSTOM_PROVIDER_SLUG || vars.OPENCODE_GO_CUSTOM_PROVIDER_SLUG || 'opencode-go' }}
+          COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG: ${{ secrets.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG || vars.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG || 'commandcode' }}
+          TARGET_FILE: ${{ inputs.target_file }}
+        run: |
+          ARGS=("--dry-run")
+          if [ -n "$TARGET_FILE" ]; then
+            ARGS+=("--file" "$TARGET_FILE")
+          fi
+          node scripts/deploy.mjs "${ARGS[@]}"
+
+      # Push to main/master or explicit manual deployment
+      - name: Deploy Dynamic Routes to Cloudflare AI Gateway
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run != true)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_GATEWAY_ID: ${{ secrets.CLOUDFLARE_GATEWAY_ID || vars.CLOUDFLARE_GATEWAY_ID }}
+          OLLAMA_CUSTOM_PROVIDER_SLUG: ${{ secrets.OLLAMA_CUSTOM_PROVIDER_SLUG || vars.OLLAMA_CUSTOM_PROVIDER_SLUG }}
+          OPENCODE_GO_CUSTOM_PROVIDER_SLUG: ${{ secrets.OPENCODE_GO_CUSTOM_PROVIDER_SLUG || vars.OPENCODE_GO_CUSTOM_PROVIDER_SLUG }}
+          COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG: ${{ secrets.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG || vars.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG }}
+          TARGET_FILE: ${{ inputs.target_file }}
+        run: |
+          ARGS=()
+          if [ -n "$TARGET_FILE" ]; then
+            ARGS+=("--file" "$TARGET_FILE")
+          fi
+          node scripts/deploy.mjs "${ARGS[@]}"
