@@ -4,9 +4,29 @@ Cloudflare AI Gateway の動的ルーティング定義と、GitHub Actions に�
 
 ---
 
+## リポジトリ構成
+
+```text
+.
+├── .github/workflows/
+│   └── deploy.yml            # GitHub Actions 自動デプロイワークフロー
+├── routes/                   # 各モデルの動的ルーティング定義 (JSON)
+│   ├── deepseek-v4-flash.json
+│   ├── glm-5.2.json
+│   ├── glm-5.3-flash.json
+│   ├── kimi-k2.7-code.json
+│   └── kimi-k3.json
+├── scripts/
+│   └── deploy.mjs            # ゼロ依存デプロイスクリプト (Node.js)
+├── package.json
+└── README.md
+```
+
+---
+
 ## 概要
 
-各 JSON ファイル内のカスタムプロバイダースラッグのプレースホルダーは、デプロイ時に環境変数から自動置換されます：
+`routes/` ディレクトリ内の各 JSON ファイルに含まれるカスタムプロバイダースラッグのプレースホルダーは、デプロイ時に環境変数から自動置換されます：
 
 - `REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG`: Ollama のカスタムプロバイダースラッグ
 - `REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG`: OpenCode Go のカスタムプロバイダースラッグ
