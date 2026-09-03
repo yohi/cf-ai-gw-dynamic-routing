@@ -5,18 +5,31 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 
+const routesDir = path.resolve(rootDir, "routes");
+
 const isDryRun = process.argv.includes("--dry-run");
 const fileArgIndex = process.argv.indexOf("--file");
 const targetFile = fileArgIndex !== -1 ? process.argv[fileArgIndex + 1] : null;
 
-// Route JSON files to deploy
-const DEFAULT_ROUTE_FILES = [
-  "kimi-k2.7-code.json",
-  "kimi-k3.json",
-  "glm-5.2.json",
-  "glm-5.3-flash.json",
-  "deepseek-v4-flash.json",
-];
+function getRouteFiles() {
+  if (targetFile) {
+    if (path.isAbsolute(targetFile)) return [targetFile];
+    if (fs.existsSync(path.resolve(routesDir, targetFile))) {
+      return [path.resolve(routesDir, targetFile)];
+    }
+    return [path.resolve(rootDir, targetFile)];
+  }
+
+  if (fs.existsSync(routesDir)) {
+    return fs
+      .readdirSync(routesDir)
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .map((f) => path.resolve(routesDir, f));
+  }
+
+  return [];
+}
 
 const CF_API_BASE = "https://api.cloudflare.com/client/v4";
 
@@ -104,13 +117,17 @@ async function main() {
     console.log(`ℹ️  Found ${existingRoutes.length} existing route(s) in gateway.`);
   }
 
-  const filesToDeploy = targetFile ? [targetFile] : DEFAULT_ROUTE_FILES;
+  const filesToDeploy = getRouteFiles();
+
+  if (filesToDeploy.length === 0) {
+    console.warn("⚠️  No route files found to deploy.");
+    return;
+  }
 
   let successCount = 0;
   let failCount = 0;
 
-  for (const file of filesToDeploy) {
-    const filePath = path.isAbsolute(file) ? file : path.resolve(rootDir, file);
+  for (const filePath of filesToDeploy) {
     if (!fs.existsSync(filePath)) {
       console.error(`❌ File not found: ${filePath}`);
       failCount++;
