@@ -120,11 +120,14 @@ function extractRoutes(data) {
   return [];
 }
 
+function getRoutesEndpoint(accountId, gatewayId, routeId = null) {
+  const base = `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`;
+  return routeId ? `${base}/${routeId}` : base;
+}
+
 async function getExistingRoutes(accountId, gatewayId) {
   try {
-    const data = await cfRequest(
-      `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`
-    );
+    const data = await cfRequest(getRoutesEndpoint(accountId, gatewayId));
     return extractRoutes(data);
   } catch (err) {
     console.error(`Failed to fetch existing routes: ${err.message}`);
@@ -134,13 +137,10 @@ async function getExistingRoutes(accountId, gatewayId) {
 
 async function createRoute(accountId, gatewayId, routeName, payload) {
   console.log(`✨ Creating new route "${routeName}"...`);
-  const data = await cfRequest(
-    `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }
-  );
+  const data = await cfRequest(getRoutesEndpoint(accountId, gatewayId), {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
   const routeResult = data.result || data;
   console.log(`✅ Successfully created route "${routeName}" (ID: ${routeResult?.id || "unknown"})`);
   return routeResult;
@@ -148,13 +148,10 @@ async function createRoute(accountId, gatewayId, routeName, payload) {
 
 async function updateRoute(accountId, gatewayId, routeId, routeName, payload) {
   console.log(`🔄 Updating existing route "${routeName}" (ID: ${routeId})...`);
-  const data = await cfRequest(
-    `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes/${routeId}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }
-  );
+  const data = await cfRequest(getRoutesEndpoint(accountId, gatewayId, routeId), {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
   const routeResult = data.result || data;
   console.log(`✅ Successfully updated route "${routeName}" (ID: ${routeResult?.id || routeId})`);
   return routeResult;
@@ -243,12 +240,16 @@ async function main() {
         await updateRoute(accountId, gatewayId, existing.id, routeName, payload);
       } else {
         try {
-          await createRoute(accountId, gatewayId, routeName, payload);
+          const created = await createRoute(accountId, gatewayId, routeName, payload);
+          if (created) {
+            existingRoutes.push(created);
+          }
         } catch (postErr) {
           const errMsg = String(postErr?.message || "").toLowerCase();
           if (errMsg.includes("already exists") || errMsg.includes(CF_ROUTE_ALREADY_EXISTS_CODE)) {
             console.log(`⚠️ Route "${routeName}" already exists on gateway. Falling back to update (PATCH)...`);
             const refreshedRoutes = await getExistingRoutes(accountId, gatewayId);
+            existingRoutes = refreshedRoutes;
             const found = refreshedRoutes.find((r) => r?.name === routeName);
             if (found?.id) {
               await updateRoute(accountId, gatewayId, found.id, routeName, payload);
