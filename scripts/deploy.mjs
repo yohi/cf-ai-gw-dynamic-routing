@@ -222,7 +222,7 @@ async function main() {
       continue;
     }
 
-    const existing = existingRoutes.find((r) => r.name === routeName);
+    const existing = existingRoutes.find((r) => r?.name === routeName);
 
     try {
       if (existing?.id) {
@@ -244,7 +244,7 @@ async function main() {
           if (errMsg.includes("already exists") || errMsg.includes(CF_ROUTE_ALREADY_EXISTS_CODE)) {
             console.log(`⚠️ Route "${routeName}" already exists on gateway. Falling back to update (PATCH)...`);
             const refreshedRoutes = await getExistingRoutes(accountId, gatewayId);
-            const found = refreshedRoutes.find((r) => r.name === routeName);
+            const found = refreshedRoutes.find((r) => r?.name === routeName);
             if (found?.id) {
               await updateRoute(accountId, gatewayId, found.id, routeName, payload);
             } else {
