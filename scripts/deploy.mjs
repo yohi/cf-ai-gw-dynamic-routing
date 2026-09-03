@@ -103,6 +103,19 @@ async function cfRequest(endpoint, options = {}) {
   return data;
 }
 
+function extractRoutes(data) {
+  if (Array.isArray(data?.result)) {
+    return data.result;
+  }
+  if (Array.isArray(data?.result?.routes)) {
+    return data.result.routes;
+  }
+  if (Array.isArray(data?.routes)) {
+    return data.routes;
+  }
+  return [];
+}
+
 async function getExistingRoutes(accountId, gatewayId) {
   try {
     const allRoutes = [];
@@ -113,14 +126,7 @@ async function getExistingRoutes(accountId, gatewayId) {
       const data = await cfRequest(
         `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes?page=${page}&per_page=${perPage}`
       );
-      const res = data.result;
-      const routes = Array.isArray(res)
-        ? res
-        : Array.isArray(res?.routes)
-        ? res.routes
-        : Array.isArray(data.routes)
-        ? data.routes
-        : [];
+      const routes = extractRoutes(data);
 
       allRoutes.push(...routes);
 
