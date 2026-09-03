@@ -96,7 +96,7 @@ async function cfRequest(endpoint, options = {}) {
     data = {};
   }
 
-  if (!response.ok || !data.success) {
+  if (!response.ok || (!Array.isArray(data) && !data.success)) {
     const errorMsg = data.errors?.map((e) => `[${e.code}] ${e.message}`).join(", ") || response.statusText;
     throw new Error(`Cloudflare API Error (${response.status}): ${errorMsg}`);
   }
@@ -107,6 +107,9 @@ async function cfRequest(endpoint, options = {}) {
 function extractRoutes(data) {
   if (Array.isArray(data)) {
     return data;
+  }
+  if (Array.isArray(data?.data?.routes)) {
+    return data.data.routes;
   }
   if (Array.isArray(data?.result)) {
     return data.result;
