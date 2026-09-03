@@ -31,7 +31,7 @@ function getRouteFiles() {
   return [];
 }
 
-const CF_API_BASE = "https://api.cloudflare.com/client/v4";
+const CF_API_BASE = process.env.CLOUDFLARE_API_BASE || "https://api.cloudflare.com/client/v4";
 
 function checkEnv() {
   const required = [
@@ -46,10 +46,10 @@ function checkEnv() {
     "COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
   ];
 
-  const missing = [...required, ...providerSlugs].filter((key) => !process.env[key]);
-  if (missing.length > 0) {
-    console.error(`❌ Error: Missing required environment variable(s): ${missing.join(", ")}`);
-    if (!isDryRun) {
+  if (!isDryRun) {
+    const missing = [...required, ...providerSlugs].filter((key) => !process.env[key]);
+    if (missing.length > 0) {
+      console.error(`❌ Error: Missing required environment variable(s): ${missing.join(", ")}`);
       process.exit(1);
     }
   }
@@ -80,7 +80,13 @@ async function cfRequest(endpoint, options = {}) {
     },
   });
 
-  const data = await response.json().catch(() => ({}));
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
   if (!response.ok || !data.success) {
     const errorMsg = data.errors?.map((e) => `[${e.code}] ${e.message}`).join(", ") || response.statusText;
     throw new Error(`Cloudflare API Error (${response.status}): ${errorMsg}`);
