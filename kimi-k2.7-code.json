@@ -1,0 +1,197 @@
+{
+  "id": "REPLACE_WITH_ROUTE_ID_KIMI_K2_7_CODE",
+  "name": "kimi-k2.7-code",
+  "elements": [
+    {
+      "id": "start",
+      "type": "start",
+      "outputs": {
+        "next": {
+          "elementId": "split"
+        }
+      }
+    },
+    {
+      "id": "split",
+      "type": "percentage",
+      "outputs": {
+        "40%": {
+          "elementId": "ollama_primary"
+        },
+        "33%": {
+          "elementId": "go_primary"
+        },
+        "27%": {
+          "elementId": "goat_primary"
+        }
+      }
+    },
+    {
+      "id": "ollama_primary",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG",
+        "model": "kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "go_after_ollama"
+        }
+      }
+    },
+    {
+      "id": "go_after_ollama",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
+        "model": "kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "goat_after_ollama"
+        }
+      }
+    },
+    {
+      "id": "goat_after_ollama",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
+        "model": "moonshotai/kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "end"
+        }
+      }
+    },
+    {
+      "id": "go_primary",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
+        "model": "kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "ollama_after_go"
+        }
+      }
+    },
+    {
+      "id": "ollama_after_go",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG",
+        "model": "kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "goat_after_go"
+        }
+      }
+    },
+    {
+      "id": "goat_after_go",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
+        "model": "moonshotai/kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "end"
+        }
+      }
+    },
+    {
+      "id": "goat_primary",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
+        "model": "moonshotai/kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "ollama_after_goat"
+        }
+      }
+    },
+    {
+      "id": "ollama_after_goat",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG",
+        "model": "kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "go_after_goat"
+        }
+      }
+    },
+    {
+      "id": "go_after_goat",
+      "type": "model",
+      "properties": {
+        "provider": "REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
+        "model": "kimi-k2.7-code",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "end"
+        }
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "outputs": {}
+    }
+  ]
+}
