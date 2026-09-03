@@ -104,6 +104,9 @@ async function cfRequest(endpoint, options = {}) {
 }
 
 function extractRoutes(data) {
+  if (Array.isArray(data)) {
+    return data;
+  }
   if (Array.isArray(data?.result)) {
     return data.result;
   }
@@ -118,26 +121,10 @@ function extractRoutes(data) {
 
 async function getExistingRoutes(accountId, gatewayId) {
   try {
-    const allRoutes = [];
-    let page = 1;
-    const perPage = 50;
-
-    while (true) {
-      const data = await cfRequest(
-        `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes?page=${page}&per_page=${perPage}`
-      );
-      const routes = extractRoutes(data);
-
-      allRoutes.push(...routes);
-
-      const totalPages = data.result_info?.total_pages;
-      if (!totalPages || page >= totalPages || routes.length === 0) {
-        break;
-      }
-      page++;
-    }
-
-    return allRoutes;
+    const data = await cfRequest(
+      `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`
+    );
+    return extractRoutes(data);
   } catch (err) {
     console.error(`Failed to fetch existing routes: ${err.message}`);
     throw err;
@@ -236,15 +223,38 @@ async function main() {
         console.log(`✅ Successfully updated route "${routeName}" (ID: ${routeResult.id || existing.id})`);
       } else {
         console.log(`✨ Creating new route "${routeName}"...`);
-        const data = await cfRequest(
-          `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`,
-          {
-            method: "POST",
-            body: JSON.stringify(payload),
+        try {
+          const data = await cfRequest(
+            `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`,
+            {
+              method: "POST",
+              body: JSON.stringify(payload),
+            }
+          );
+          const routeResult = data.result || data;
+          console.log(`✅ Successfully created route "${routeName}" (ID: ${routeResult.id})`);
+        } catch (postErr) {
+          if (postErr.message.includes("already exists") || postErr.message.includes("7005")) {
+            console.log(`⚠️ Route "${routeName}" already exists on gateway. Falling back to update (PATCH)...`);
+            const refreshedRoutes = await getExistingRoutes(accountId, gatewayId);
+            const found = refreshedRoutes.find((r) => r.name === routeName);
+            if (found) {
+              const patchData = await cfRequest(
+                `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes/${found.id}`,
+                {
+                  method: "PATCH",
+                  body: JSON.stringify(payload),
+                }
+              );
+              const routeResult = patchData.result || patchData;
+              console.log(`✅ Successfully updated route "${routeName}" (ID: ${routeResult.id || found.id})`);
+            } else {
+              throw postErr;
+            }
+          } else {
+            throw postErr;
           }
-        );
-        const routeResult = data.result || data;
-        console.log(`✅ Successfully created route "${routeName}" (ID: ${routeResult.id})`);
+        }
       }
       successCount++;
     } catch (err) {
