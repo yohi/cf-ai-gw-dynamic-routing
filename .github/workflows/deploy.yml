@@ -33,9 +33,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   validate-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -71,10 +75,11 @@ jobs:
           OLLAMA_CUSTOM_PROVIDER_SLUG: ${{ secrets.OLLAMA_CUSTOM_PROVIDER_SLUG || vars.OLLAMA_CUSTOM_PROVIDER_SLUG || 'ollama' }}
           OPENCODE_GO_CUSTOM_PROVIDER_SLUG: ${{ secrets.OPENCODE_GO_CUSTOM_PROVIDER_SLUG || vars.OPENCODE_GO_CUSTOM_PROVIDER_SLUG || 'opencode-go' }}
           COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG: ${{ secrets.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG || vars.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG || 'commandcode' }}
+          TARGET_FILE: ${{ inputs.target_file }}
         run: |
           ARGS="--dry-run"
-          if [ -n "${{ inputs.target_file }}" ]; then
-            ARGS="$ARGS --file ${{ inputs.target_file }}"
+          if [ -n "$TARGET_FILE" ]; then
+            ARGS="$ARGS --file $TARGET_FILE"
           fi
           node scripts/deploy.mjs $ARGS
 
@@ -88,9 +93,10 @@ jobs:
           OLLAMA_CUSTOM_PROVIDER_SLUG: ${{ secrets.OLLAMA_CUSTOM_PROVIDER_SLUG || vars.OLLAMA_CUSTOM_PROVIDER_SLUG }}
           OPENCODE_GO_CUSTOM_PROVIDER_SLUG: ${{ secrets.OPENCODE_GO_CUSTOM_PROVIDER_SLUG || vars.OPENCODE_GO_CUSTOM_PROVIDER_SLUG }}
           COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG: ${{ secrets.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG || vars.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG }}
+          TARGET_FILE: ${{ inputs.target_file }}
         run: |
           ARGS=""
-          if [ -n "${{ inputs.target_file }}" ]; then
-            ARGS="--file ${{ inputs.target_file }}"
+          if [ -n "$TARGET_FILE" ]; then
+            ARGS="--file $TARGET_FILE"
           fi
           node scripts/deploy.mjs $ARGS

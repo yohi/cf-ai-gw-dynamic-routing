@@ -142,7 +142,13 @@ async function main() {
     try {
       routeData = JSON.parse(processedContent);
     } catch (e) {
-      console.error(`❌ JSON parse error in ${file}: ${e.message}`);
+      console.error(`❌ JSON parse error in ${path.basename(filePath)}: ${e.message}`);
+      failCount++;
+      continue;
+    }
+
+    if (!routeData || typeof routeData !== "object") {
+      console.error(`❌ Invalid route content in ${path.basename(filePath)}: expected a JSON object.`);
       failCount++;
       continue;
     }
@@ -151,7 +157,7 @@ async function main() {
     const elements = routeData.elements;
 
     if (!routeName || !Array.isArray(elements)) {
-      console.error(`❌ Invalid route format: "name" and "elements" array are required.`);
+      console.error(`❌ Invalid route format in ${path.basename(filePath)}: "name" and "elements" array are required.`);
       failCount++;
       continue;
     }
