@@ -127,8 +127,31 @@ function getRoutesEndpoint(accountId, gatewayId, routeId = null) {
 
 async function getExistingRoutes(accountId, gatewayId) {
   try {
-    const data = await cfRequest(getRoutesEndpoint(accountId, gatewayId));
-    return extractRoutes(data);
+    const allRoutes = [];
+    let page = 1;
+    const perPage = 50;
+    const maxPages = 100;
+
+    while (page <= maxPages) {
+      const endpoint = `${getRoutesEndpoint(accountId, gatewayId)}?page=${page}&per_page=${perPage}`;
+      const data = await cfRequest(endpoint);
+      const routes = extractRoutes(data);
+
+      allRoutes.push(...routes);
+
+      const totalPages = data.result_info?.total_pages;
+      if (typeof totalPages === "number") {
+        if (page >= totalPages || routes.length === 0) {
+          break;
+        }
+      } else if (routes.length < perPage) {
+        break;
+      }
+
+      page++;
+    }
+
+    return allRoutes;
   } catch (err) {
     console.error(`Failed to fetch existing routes: ${err.message}`);
     throw err;
