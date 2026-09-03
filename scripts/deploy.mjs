@@ -9,7 +9,15 @@ const routesDir = path.resolve(rootDir, "routes");
 
 const isDryRun = process.argv.includes("--dry-run");
 const fileArgIndex = process.argv.indexOf("--file");
-const targetFile = fileArgIndex !== -1 ? process.argv[fileArgIndex + 1] : null;
+let targetFile = null;
+if (fileArgIndex !== -1) {
+  const nextArg = process.argv[fileArgIndex + 1];
+  if (!nextArg || nextArg.startsWith("-")) {
+    console.error("❌ Error: --file option requires a valid file path argument.");
+    process.exit(1);
+  }
+  targetFile = nextArg;
+}
 
 function getRouteFiles() {
   if (targetFile) {
@@ -92,13 +100,38 @@ async function cfRequest(endpoint, options = {}) {
     throw new Error(`Cloudflare API Error (${response.status}): ${errorMsg}`);
   }
 
-  return data.result;
+  return data;
 }
 
 async function getExistingRoutes(accountId, gatewayId) {
   try {
-    const routes = await cfRequest(`/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`);
-    return Array.isArray(routes) ? routes : [];
+    const allRoutes = [];
+    let page = 1;
+    const perPage = 50;
+
+    while (true) {
+      const data = await cfRequest(
+        `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes?page=${page}&per_page=${perPage}`
+      );
+      const res = data.result;
+      const routes = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.routes)
+        ? res.routes
+        : Array.isArray(data.routes)
+        ? data.routes
+        : [];
+
+      allRoutes.push(...routes);
+
+      const totalPages = data.result_info?.total_pages;
+      if (!totalPages || page >= totalPages || routes.length === 0) {
+        break;
+      }
+      page++;
+    }
+
+    return allRoutes;
   } catch (err) {
     console.error(`Failed to fetch existing routes: ${err.message}`);
     throw err;
@@ -186,24 +219,26 @@ async function main() {
     try {
       if (existing) {
         console.log(`🔄 Updating existing route "${routeName}" (ID: ${existing.id})...`);
-        const result = await cfRequest(
+        const data = await cfRequest(
           `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes/${existing.id}`,
           {
             method: "PATCH",
             body: JSON.stringify(payload),
           }
         );
-        console.log(`✅ Successfully updated route "${routeName}" (ID: ${result.id || existing.id})`);
+        const routeResult = data.result || data;
+        console.log(`✅ Successfully updated route "${routeName}" (ID: ${routeResult.id || existing.id})`);
       } else {
         console.log(`✨ Creating new route "${routeName}"...`);
-        const result = await cfRequest(
+        const data = await cfRequest(
           `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`,
           {
             method: "POST",
             body: JSON.stringify(payload),
           }
         );
-        console.log(`✅ Successfully created route "${routeName}" (ID: ${result.id})`);
+        const routeResult = data.result || data;
+        console.log(`✅ Successfully created route "${routeName}" (ID: ${routeResult.id})`);
       }
       successCount++;
     } catch (err) {
