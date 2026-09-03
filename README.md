@@ -10,6 +10,8 @@ Cloudflare AI Gateway の動的ルーティング定義と、GitHub Actions に�
 .
 ├── .github/workflows/
 │   └── deploy.yml            # GitHub Actions 自動デプロイワークフロー
+├── docs/
+│   └── routing-weights-rationale.md # 配分比率の算出根拠・設計思想
 ├── routes/                   # 各モデルの動的ルーティング定義 (JSON)
 │   ├── deepseek-v4-flash.json
 │   ├── glm-5.2.json
@@ -45,6 +47,9 @@ Cloudflare AI Gateway の動的ルーティング定義と、GitHub Actions に�
 | **`glm-5.2`** | OpenCode Go 48% / GOAT 52% | Ollama (緊急フォールバックのみ) |
 | **`glm-5.3-flash`** | OpenCode Go 25% / GOAT 75% | Ollama (緊急フォールバックのみ) |
 | **`deepseek-v4-flash`** | OpenCode Go 30% / GOAT 70% | Ollama (緊急フォールバックのみ) |
+
+> [!NOTE]
+> 各プロバイダーへのトラフィック配分比率（Weight）の算出根拠、計算式、および運用時のチューニング指針についての詳細は [**トラフィック配分比率の算出根拠と設計思想**](docs/routing-weights-rationale.md) を参照してください。
 
 ### ルーティングの設計方針
 - **同一モデルでのフォールバック**: すべてのフォールバック先で、同一の LLM モデルを維持したまま別プロバイダーへ切り替わります。
