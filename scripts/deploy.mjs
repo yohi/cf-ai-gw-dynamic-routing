@@ -132,6 +132,20 @@ async function getExistingRoutes(accountId, gatewayId) {
   }
 }
 
+async function createRoute(accountId, gatewayId, routeName, payload) {
+  console.log(`✨ Creating new route "${routeName}"...`);
+  const data = await cfRequest(
+    `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
+  const routeResult = data.result || data;
+  console.log(`✅ Successfully created route "${routeName}" (ID: ${routeResult?.id || "unknown"})`);
+  return routeResult;
+}
+
 async function updateRoute(accountId, gatewayId, routeId, routeName, payload) {
   console.log(`🔄 Updating existing route "${routeName}" (ID: ${routeId})...`);
   const data = await cfRequest(
@@ -142,7 +156,7 @@ async function updateRoute(accountId, gatewayId, routeId, routeName, payload) {
     }
   );
   const routeResult = data.result || data;
-  console.log(`✅ Successfully updated route "${routeName}" (ID: ${routeResult.id || routeId})`);
+  console.log(`✅ Successfully updated route "${routeName}" (ID: ${routeResult?.id || routeId})`);
   return routeResult;
 }
 
@@ -228,17 +242,8 @@ async function main() {
       if (existing?.id) {
         await updateRoute(accountId, gatewayId, existing.id, routeName, payload);
       } else {
-        console.log(`✨ Creating new route "${routeName}"...`);
         try {
-          const data = await cfRequest(
-            `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`,
-            {
-              method: "POST",
-              body: JSON.stringify(payload),
-            }
-          );
-          const routeResult = data.result || data;
-          console.log(`✅ Successfully created route "${routeName}" (ID: ${routeResult.id})`);
+          await createRoute(accountId, gatewayId, routeName, payload);
         } catch (postErr) {
           const errMsg = String(postErr?.message || "").toLowerCase();
           if (errMsg.includes("already exists") || errMsg.includes(CF_ROUTE_ALREADY_EXISTS_CODE)) {
