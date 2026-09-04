@@ -7,11 +7,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { cfFetchJson } from './analyze-logs.mjs';
 import {
   analyzeLogRecord,
   buildAmplification,
   buildReportData,
   buildSessionDeltas,
+  estimateTokens,
   extractProviderUsage,
   stableStringify,
 } from './lib/log-analysis.mjs';
@@ -79,6 +81,33 @@ const responseAnthropic = {
   },
 };
 
+function fakeResponse(status, body, retryAfter = null) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => retryAfter },
+    text: async () => body,
+  };
+}
+
+async function withMockedFetchAndTimers(fetchImplementation, callback) {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const waits = [];
+  globalThis.fetch = fetchImplementation;
+  globalThis.setTimeout = (handler, delay, ...args) => {
+    waits.push(delay);
+    handler(...args);
+    return 0;
+  };
+  try {
+    return await callback(waits);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+}
+
 const analyzed1 = analyzeLogRecord(makeLog('1', 1000), request1, responseOpenAI);
 const analyzed2 = analyzeLogRecord(makeLog('2', 1250, 'commandcode'), request2, responseAnthropic);
 const anthropicRequest = {
@@ -140,10 +169,51 @@ const inferred = analyzeLogRecord(
 assert.match(inferred.request.session_id, /^inferred:/);
 assert.equal(inferred.request.session_source, 'inferred:first-user');
 
+const splitItem = {
+  role: 'assistant',
+  name: 'delegator',
+  tool_calls: [{ id: 'call-task', function: { name: 'task' } }],
+  content: [
+    { type: 'text', text: 'before result' },
+    { type: 'tool_result', tool_use_id: 'call-task', content: 'STATUS: complete' },
+    { type: 'text', text: 'after result' },
+  ],
+};
+const splitAnalysis = analyzeLogRecord(makeLog('6', 700), { messages: [splitItem] }, {});
+const assistantChunks = splitAnalysis.artifacts.filter((row) => row.artifact_type === 'assistant_message');
+assert.deepEqual(
+  assistantChunks.map((row) => row.estimated_tokens),
+  [
+    estimateTokens({ role: 'assistant', content: [splitItem.content[0]] }),
+    estimateTokens({ role: 'assistant', content: [splitItem.content[2]] }),
+  ],
+  'regular content chunks must not repeat item-level metadata',
+);
+
+const functionCallAnalysis = analyzeLogRecord(
+  makeLog('7', 200),
+  {
+    input: [
+      { type: 'function_call', call_id: 'call-function', name: 'task', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call-function', output: 'STATUS: complete' },
+    ],
+  },
+  {},
+);
+assert.ok(functionCallAnalysis.artifacts.some((row) => (
+  row.artifact_type === 'subagent_return' && row.tool_name === 'task'
+)));
+
 assert.deepEqual(extractProviderUsage(responseOpenAI), {
   provider_input_tokens: 1200,
   provider_output_tokens: 150,
   provider_cache_read_tokens: 900,
+  provider_cache_write_tokens: null,
+});
+assert.deepEqual(extractProviderUsage({ nested: { token_usage: { input_tokens: 11, output_tokens: 7 } } }), {
+  provider_input_tokens: 11,
+  provider_output_tokens: 7,
+  provider_cache_read_tokens: null,
   provider_cache_write_tokens: null,
 });
 
@@ -203,5 +273,52 @@ try {
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }
+
+for (const retryAfter of [null, '0', '-1', 'not-a-number']) {
+  let attempts = 0;
+  await withMockedFetchAndTimers(
+    async () => {
+      attempts += 1;
+      return attempts === 1
+        ? fakeResponse(503, 'temporary failure', retryAfter)
+        : fakeResponse(200, '{"ok":true}');
+    },
+    async (waits) => {
+      assert.deepEqual(await cfFetchJson('https://example.test', 'token', { attempts: 2 }), { ok: true });
+      assert.equal(attempts, 2);
+      assert.deepEqual(waits, [500], `invalid retry-after ${String(retryAfter)} must use fallback delay`);
+    },
+  );
+}
+
+let positiveRetryAttempts = 0;
+await withMockedFetchAndTimers(
+  async () => {
+    positiveRetryAttempts += 1;
+    return positiveRetryAttempts === 1
+      ? fakeResponse(503, 'temporary failure', '2')
+      : fakeResponse(200, '{"ok":true}');
+  },
+  async (waits) => {
+    assert.deepEqual(await cfFetchJson('https://example.test', 'token', { attempts: 2 }), { ok: true });
+    assert.deepEqual(waits, [2000]);
+  },
+);
+
+let nonRetryableAttempts = 0;
+await withMockedFetchAndTimers(
+  async () => {
+    nonRetryableAttempts += 1;
+    return fakeResponse(400, 'bad request');
+  },
+  async (waits) => {
+    await assert.rejects(
+      () => cfFetchJson('https://example.test', 'token', { attempts: 4 }),
+      /Cloudflare API 400: bad request/,
+    );
+    assert.equal(nonRetryableAttempts, 1);
+    assert.deepEqual(waits, []);
+  },
+);
 
 console.log('✓ log-analysis self-test passed');

@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { dirname, resolve, join } from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 import {
   analyzeLogRecord,
@@ -15,6 +16,8 @@ import {
 } from './lib/log-analysis.mjs';
 
 const CF_API_BASE = process.env.CLOUDFLARE_API_BASE || 'https://api.cloudflare.com/client/v4';
+
+class NonRetryableHttpError extends Error {}
 
 function usage() {
   console.log(`Usage:
@@ -147,7 +150,7 @@ function sleep(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
 
-async function cfFetchJson(url, token, { attempts = 4 } = {}) {
+export async function cfFetchJson(url, token, { attempts = 4 } = {}) {
   let lastError = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
@@ -164,12 +167,21 @@ async function cfFetchJson(url, token, { attempts = 4 } = {}) {
 
       const body = await response.text();
       const retryable = response.status === 429 || response.status >= 500;
-      if (!retryable || attempt === attempts - 1) {
-        throw new Error(`Cloudflare API ${response.status}: ${body.slice(0, 500)}`);
+      const responseError = new Error(`Cloudflare API ${response.status}: ${body.slice(0, 500)}`);
+      if (!retryable) {
+        throw new NonRetryableHttpError(responseError.message);
       }
+      if (attempt === attempts - 1) {
+        throw responseError;
+      }
+      lastError = responseError;
       const retryAfter = Number(response.headers.get('retry-after'));
-      await sleep(Number.isFinite(retryAfter) ? retryAfter * 1000 : 500 * 2 ** attempt);
+      const delay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : 500 * 2 ** attempt;
+      await sleep(delay);
     } catch (error) {
+      if (error instanceof NonRetryableHttpError) throw error;
       lastError = error;
       if (attempt === attempts - 1) break;
       await sleep(500 * 2 ** attempt);
@@ -475,7 +487,9 @@ async function main() {
   for (const recommendation of report.recommendations.slice(0, 3)) console.log(`  - ${recommendation}`);
 }
 
-main().catch((error) => {
-  console.error(`[error] ${error.stack ?? error.message}`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((error) => {
+    console.error(`[error] ${error.stack ?? error.message}`);
+    process.exitCode = 1;
+  });
+}

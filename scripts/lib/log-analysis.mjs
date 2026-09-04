@@ -155,7 +155,12 @@ function normalizeMessages(messages) {
 
     let regularParts = [];
     const flushRegularParts = () => {
-      if (regularParts.length) normalized.push({ ...item, content: regularParts });
+      if (regularParts.length) {
+        const chunk = { content: regularParts };
+        if (item.role !== undefined) chunk.role = item.role;
+        if (item.type !== undefined) chunk.type = item.type;
+        normalized.push(chunk);
+      }
       regularParts = [];
     };
 
@@ -185,35 +190,38 @@ function collectTools(body) {
   return [];
 }
 
+function addToolCall(map, id, name) {
+  if (id && name) map.set(String(id), normalizeToolName(name));
+}
+
+function addMessageToolCalls(map, item) {
+  if (!Array.isArray(item.tool_calls)) return;
+  for (const call of item.tool_calls) {
+    addToolCall(map, call?.id ?? call?.call_id, call?.function?.name ?? call?.name);
+  }
+}
+
+function addFunctionCallItem(map, item) {
+  if (item.type !== 'function_call') return;
+  addToolCall(map, item.call_id ?? item.id, item.name);
+}
+
+function addContentToolCalls(map, item) {
+  if (!Array.isArray(item.content)) return;
+  for (const part of item.content) {
+    if (!part || typeof part !== 'object') continue;
+    if (part.type !== 'tool_use' && part.type !== 'function_call') continue;
+    addToolCall(map, part.id ?? part.call_id, part.name ?? part.function?.name);
+  }
+}
+
 function buildToolCallMap(messages) {
   const map = new Map();
   for (const item of messages) {
     if (!item || typeof item !== 'object') continue;
-
-    if (Array.isArray(item.tool_calls)) {
-      for (const call of item.tool_calls) {
-        const id = call?.id ?? call?.call_id;
-        const name = call?.function?.name ?? call?.name;
-        if (id && name) map.set(String(id), normalizeToolName(name));
-      }
-    }
-
-    if (item.type === 'function_call') {
-      const id = item.call_id ?? item.id;
-      const name = item.name;
-      if (id && name) map.set(String(id), normalizeToolName(name));
-    }
-
-    if (Array.isArray(item.content)) {
-      for (const part of item.content) {
-        if (!part || typeof part !== 'object') continue;
-        if (part.type === 'tool_use' || part.type === 'function_call') {
-          const id = part.id ?? part.call_id;
-          const name = part.name ?? part.function?.name;
-          if (id && name) map.set(String(id), normalizeToolName(name));
-        }
-      }
-    }
+    addMessageToolCalls(map, item);
+    addFunctionCallItem(map, item);
+    addContentToolCalls(map, item);
   }
   return map;
 }
@@ -288,18 +296,24 @@ export function inferSessionId({ metadata, metadataSessionKey = 'session', messa
   return { sessionId: `log:${logId}`, source: 'fallback:log-id' };
 }
 
+function extractUsageObjects(value) {
+  const usageObjects = [];
+  if (value.usage && typeof value.usage === 'object') usageObjects.push(value.usage);
+  if (value.token_usage && typeof value.token_usage === 'object') usageObjects.push(value.token_usage);
+  return usageObjects;
+}
+
 function recursivelyFindUsageObjects(root) {
   const usageObjects = [];
   const queue = [unwrapApiEnvelope(root)];
   const seen = new Set();
-  let depth = 0;
-  while (queue.length && depth < 10000) {
-    depth += 1;
+  let iterations = 0;
+  while (queue.length && iterations < 10000) {
+    iterations += 1;
     const current = queue.shift();
     if (!current || typeof current !== 'object' || seen.has(current)) continue;
     seen.add(current);
-    if (current.usage && typeof current.usage === 'object') usageObjects.push(current.usage);
-    if (current.token_usage && typeof current.token_usage === 'object') usageObjects.push(current.token_usage);
+    usageObjects.push(...extractUsageObjects(current));
     for (const value of Object.values(current)) {
       if (value && typeof value === 'object') queue.push(value);
     }
