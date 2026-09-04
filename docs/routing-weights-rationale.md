@@ -1,169 +1,248 @@
-# トラフィック配分比率（Weights）の算出根拠と設計思想
+# ルーティング配分・優先順位の根拠と設計思想
 
-本ドキュメントでは、Cloudflare AI Gateway の動的ルーティングにおける各プロバイダー（Ollama Legacy / OpenCode Go / Command Code GOAT）へのトラフィック配分比率（Weight）の算出根拠と設計方針について詳述します。
+本ドキュメントでは、Cloudflare AI Gateway Dynamic Routing における各プロバイダー（Sakura AI / Ollama Legacy / OpenCode Go / Command Code GOAT）の配分・優先順位と、その根拠を記録します。
 
 ---
 
-## 1. 基本方針と算出モデル
+## 1. 基本原則
 
-各動的ルートにおける配分比率は、以下の2つの原則に基づいて決定されています。
+このリポジトリでは **1 Dynamic Route = 1 LLM モデル** とし、route 内でモデルを変更しません。変更するのは同一モデルを提供する upstream provider のみです。
 
-1. **OpenCode Go : Command Code GOAT の比率**  
-   各社公式が公開している「典型的な月間推定リクエスト数（Typical Requests / Month）」をベースに正規化して算出（客観的データに基づく）。
-2. **Ollama Legacy の比率**  
-   旧 Ollama Pro プラン等の Legacy Quota は正確な GPU/Token Allowance が非公開であるため、モデル特性（推論コストの重さ）に応じた**戦略的ヒューリスティック配分**を採用。
+ルーティングは次の2種類を使い分けます。
+
+1. **Ordered failover**
+   - 高コスト / 長時間 agentic workload 向け
+   - primary provider を固定し、quota / 429 / timeout / provider failure 時だけ次へ進む
+   - Kimi K3 / GLM-5.2、および品質検証後の Kimi K2.7 で採用する
+2. **Percentage split**
+   - provider 側に十分な subscription capacity がある Flash 系向け
+   - OpenCode Go / GOAT の公開 Typical Requests を初期 weight の参考にする
+   - GLM-5.3 Flash / DeepSeek V4 Flash で採用する
+
+Cloudflare の Percentage は request 数単位の確率分配であり、token 使用量や subscription quota 残量を直接均等化する機能ではありません。
+
+---
+
+## 2. 初期設計からの方針変更
+
+初期設計では、OpenCode Go と GOAT が公開している Typical Requests / Month をモデルごとに正規化し、高コストモデルにも Percentage を適用していました。
+
+しかし 2026-09-04 の実運用では、OmO + Superpowers による agentic coding workload が公開 Typical Request より大幅に重いことが確認されました。
+
+### 観測値
+
+- **OpenCode Go**
+  - 稼働開始から1日未満で weekly usage が **100.1%** に到達
+  - monthly usage も **50%** に到達
+  - 週次内訳は GLM 5.3 / Kimi K2.7 Code / GLM 5.3 Flash が同一 weekly window を共有して消費
+- **Command Code GOAT**
+  - **299 requests** で約 **43.4M tokens**
+  - 単純平均で約 **145k tokens / request**
+
+公開されている Typical Request は一般に fresh input 数百 tokens + cache read 約50k + output 数百 tokens 程度を想定しており、この実 workload では request 数だけを基準にした capacity 推定が楽観的になります。
+
+このため、**高コストモデルでは Percentage による平常時分散をやめ、Ollama Legacy を primary とする ordered failover に変更**します。
+
+---
+
+## 3. Provider の位置づけ
+
+### 3.1 Sakura AI Engine
+
+Kimi K2.7 Code の Public Preview を提供します。
+
+- 無料枠: **月3,000 requests**
+- token 消費量ではなく request 数で無料枠を消費するため、巨大 context を持つ agentic coding との相性が良い
+- 一方 Public Preview のため、安定性・応答品質は保証されない
+
+したがって、いきなり100% primaryにはせず **20% A/B validation** から開始します。
+
+使用する upstream model ID:
 
 ```text
-                                [ 入力リクエスト ]
-                                        │
-                    ┌───────────────────┴───────────────────┐
-                    ▼                                       ▼
-        【高コスト推論モデル】                      【低コスト / Flash モデル】
-         (Kimi K2.7 / Kimi K3)                 (GLM-5.2 / GLM-5.3 / DeepSeek V4)
-                    │                                       │
-        ┌───────────┴───────────┐                           │
-        ▼                       ▼                           ▼
-[Ollama 先取り配分]     [残余トラフィック]              [Go : GOAT 正規化配分]
- (40% 〜 50%)          (50% 〜 60%)                 (Go / GOAT のみで 100%)
-                                │                                   │
-                                ▼                                   ▼
-                    [Go : GOAT 正規化配分]               [Ollama: 緊急フォールバック]
+preview/Kimi-K2.7-Code
 ```
 
----
+### 3.2 Ollama Legacy
 
-## 2. 共通算出式
+旧 Ollama Pro の legacy quota は正確な GPU / token allowance が公開されていません。
 
-### 2.1 Go と GOAT の正規化比率
-各社が想定する典型的なエージェントリクエスト（例: Fresh Input 約800 tokens + Cache Read 約50k + Output 約125〜200 tokens）における月間推定リクエスト数を基準に、両者の比率を正規化します。
+そのため定量 weight は置かず、現在は **高コスト open model の primary reservoir** として扱います。
 
-$$
-\text{Weight}_{\text{Go}} = \frac{\text{Req}_{\text{Go}}}{\text{Req}_{\text{Go}} + \text{Req}_{\text{GOAT}}}
-$$
+優先対象:
 
-$$
-\text{Weight}_{\text{GOAT}} = \frac{\text{Req}_{\text{GOAT}}}{\text{Req}_{\text{Go}} + \text{Req}_{\text{GOAT}}}
-$$
+- Kimi K2.7 Code
+- Kimi K3
+- GLM-5.2
 
-### 2.2 Ollama 先取り枠がある場合（K2.7 / K3）
-Ollama に割り当てた割合を $P_{\text{Ollama}}$ とし、残りのトラフィック $(1 - P_{\text{Ollama}})$ を Go と GOAT の正規化比率で按分します。
+Flash 系では通常 traffic を極力流さず、必要に応じて emergency fallback として利用します。
 
-$$
-\text{Weight}_{\text{Go}} = (1 - P_{\text{Ollama}}) \times \frac{\text{Req}_{\text{Go}}}{\text{Req}_{\text{Go}} + \text{Req}_{\text{GOAT}}}
-$$
+### 3.3 OpenCode Go / Command Code GOAT
 
-$$
-\text{Weight}_{\text{GOAT}} = (1 - P_{\text{Ollama}}) \times \frac{\text{Req}_{\text{GOAT}}}{\text{Req}_{\text{Go}} + \text{Req}_{\text{GOAT}}}
-$$
+Go / GOAT は複数モデルが同じ plan window を共有します。
+
+したがって、モデルごとの Typical Requests を「独立した財布」として合算してはいけません。
+
+高コストモデルでは overflow / fallback として利用し、Flash 系のみ Percentage split の primary capacity として利用します。
 
 ---
 
-## 3. モデル別配分比率の算出詳細
+## 4. モデル別ルーティング
 
-### 3.1 Kimi K2.7 Code — `40 / 33 / 27`
+### 4.1 Kimi K2.7 Code — Sakura 品質検証フェーズ
 
-- **月間推定リクエスト数**:
-  - OpenCode Go: **6,750 req/月**
-  - GOAT: **5,420 req/月**
+現在:
 
-#### 計算プロセス
-1. **Go と GOAT の正規化**:
-   - Go: $6,750 / (6,750 + 5,420) \fallingdotseq 55.46\%$
-   - GOAT: $5,420 / (6,750 + 5,420) \fallingdotseq 44.54\%$
-2. **Ollama に 40% を先取り割り当て**:
-   - 残余枠: $60\%$
-   - Go: $60\% \times 55.46\% \fallingdotseq 33.28\% \rightarrow \mathbf{33\%}$
-   - GOAT: $60\% \times 44.54\% \fallingdotseq 26.72\% \rightarrow \mathbf{27\%}$
+```text
+20% Sakura
+80% Ollama
+```
 
-> **Ollama 40% の選定理由**:  
-> K2.7 Code は長時間のコーディングエージェント向けに思考トークンが最適化された主力モデルです。Ollama Legacy 枠を死蔵させず積極的に活用しつつ、特定のプロバイダーへ偏りすぎないバランスとして初期値 40% を設定しています。
+Sakura branch:
+
+```text
+Sakura
+  ↓ failure
+Ollama
+  ↓
+OpenCode Go
+  ↓
+GOAT
+```
+
+Ollama branch:
+
+```text
+Ollama
+  ↓ failure
+Sakura
+  ↓
+OpenCode Go
+  ↓
+GOAT
+```
+
+#### 20% Sakura の理由
+
+Sakura の無料 3,000 requests は非常に魅力的ですが、Public Preview の serving quality が Ollama 等と実運用上同等かは未確認です。
+
+まず十分な sample を集め、以下を比較します。
+
+- task 完走率
+- tool-call error / malformed call 率
+- reviewer による追加修正率
+- 平均 turn 数
+- TDD RED → GREEN までの turn 数
+- latency
+- 同一種類タスクでの品質差
+
+品質差が実用上無視できると判断できれば、次フェーズでは Percentage を削除して次の ordered route へ移行します。
+
+```text
+Sakura
+  ↓
+Ollama
+  ↓
+OpenCode Go
+  ↓
+GOAT
+```
+
+### 4.2 Kimi K3 — Ollama primary
+
+```text
+Ollama
+  ↓
+GOAT
+  ↓
+OpenCode Go
+```
+
+K3 は Go / GOAT の Typical Request capacity が特に小さく、長時間 reasoning で plan window を急速に消費します。
+
+GOAT を Go より先に置くのは、公開 Typical Requests では K3 の GOAT capacity が Go より大きいためです。ただし両者とも primary にはしません。
+
+### 4.3 GLM-5.2 — Ollama primary
+
+```text
+Ollama
+  ↓
+GOAT
+  ↓
+OpenCode Go
+```
+
+初期設計の `Go 48% / GOAT 52%` は Typical Requests の正規化としては妥当でしたが、Go / GOAT の共有 window が実 workload で1日未満に枯渇し得るため、平常時分散を停止しました。
+
+GOAT → Go の順序は両者の公開 capacity が近い中で、GOAT側が若干大きいためです。
+
+### 4.4 GLM-5.3 Flash — Percentage 維持
+
+```text
+25% OpenCode Go
+75% GOAT
+```
+
+初期値は公開 Typical Requests の比率:
+
+- Go: 約7,900 req/月
+- GOAT: 約23,600 req/月
+
+を正規化したものです。
+
+Flash系は高コストモデルより capacity が大きいため、現時点では Percentage を維持します。ただし Go / GOAT の weekly / monthly shared window を監視し、必要なら weight を下げます。
+
+### 4.5 DeepSeek V4 Flash — Percentage 維持
+
+```text
+30% OpenCode Go
+70% GOAT
+```
+
+初期値は公開 Typical Requests の比率:
+
+- Go: 約37,800 req/月
+- GOAT: 約91,200 req/月
+
+を正規化したものです。
+
+DeepSeek V4 Flash は Go / GOAT 双方で相対的に大きな capacity があり、特に大量 utility / explore workload の overflow として利用価値があります。
 
 ---
 
-### 3.2 Kimi K3 — `50 / 17 / 33`
+## 5. 現在のルーティングまとめ
 
-- **月間推定リクエスト数**:
-  - OpenCode Go: **490 req/月**
-  - GOAT: **980 req/月**
-  - （Go : GOAT の比率はジャスト $1 : 2$）
-
-#### 計算プロセス
-1. **Ollama に 50% を先取り割り当て**:
-   - 残余枠: $50\%$
-   - Go: $50\% \times \frac{1}{3} \fallingdotseq 16.67\% \rightarrow \mathbf{17\%}$
-   - GOAT: $50\% \times \frac{2}{3} \fallingdotseq 33.33\% \rightarrow \mathbf{33\%}$
-
-> **Ollama 50% の選定理由**:  
-> K3 は GOAT でも月 980 req、Go ではわずか 490 req 相当と、全モデル中で群を抜いて Quota 消費が重い高負荷モデルです。Go/GOAT の枠が非常に希少であるため、**「希少な Ollama Legacy 枠を単価の高い K3 に集中投下する」** というリソース配分戦略に基づき 50% まで引き上げています。
+| モデル | Primary | Secondary | Tertiary | 備考 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kimi K2.7 Code** | Sakura 20% / Ollama 80% | 相互 fallback | Go → GOAT | Sakura A/B validation 中 |
+| **Kimi K3** | Ollama | GOAT | Go | ordered failover |
+| **GLM-5.2** | Ollama | GOAT | Go | ordered failover |
+| **GLM-5.3 Flash** | Go 25% / GOAT 75% | 相互 fallback | Ollama | Percentage 維持 |
+| **DeepSeek V4 Flash** | Go 30% / GOAT 70% | 相互 fallback | Ollama | Percentage 維持 |
 
 ---
 
-### 3.3 GLM-5.2 — `48 / 52` (Ollama: 緊急フォールバック)
+## 6. モニタリング指標
 
-- **月間推定リクエスト数**:
-  - OpenCode Go: **4,300 req/月**
-  - GOAT: **4,740 req/月**
+Cloudflare AI Gateway のログでは、少なくともモデル × provider ごとに次を確認します。
 
-#### 計算プロセス
-- Go: $4,300 / (4,300 + 4,740) \fallingdotseq 47.57\% \rightarrow \mathbf{48\%}$
-- GOAT: $4,740 / (4,300 + 4,740) \fallingdotseq 52.43\% \rightarrow \mathbf{52\%}$
+1. **HTTP 429 / quota failure 率**
+2. **fallback 発動率**
+3. **input / cache / output token 使用量**
+4. **latency / timeout**
+5. **同一 session の provider 遷移頻度**
 
-> **Ollama を通常ルーティングから除外した理由**:  
-> GOAT（月 $70 クレジット全額対象）および Go（月 4,300 req 相当）ともに十分な Quota が確保されています。Go / GOAT 双方に十分な枠があるモデルで不透明な Ollama Legacy 枠を消費する必要性が薄いため、Ollama は両系障害時の緊急フォールバックとして温存しています。
-
----
-
-### 3.4 GLM-5.3 Flash — `25 / 75` (Ollama: 緊急フォールバック)
-
-- **月間推定リクエスト数**:
-  - OpenCode Go: **7,900 req/月**
-  - GOAT: **23,600 req/月**
-
-#### 計算プロセス
-- Go: $7,900 / (7,900 + 23,600) \fallingdotseq 25.08\% \rightarrow \mathbf{25\%}$
-- GOAT: $23,600 / (7,900 + 23,600) \fallingdotseq 74.92\% \rightarrow \mathbf{75\%}$
-
-> **設計の根拠**:  
-> GOAT の枠（月 23,600 req）が Go（月 7,900 req）の約3倍存在するため、完全に $1:3$ の比率で配分しています。2社合計で月 31,500 req 相当が確保されているため、Ollama Legacy 枠は使用せず緊急フォールバックに回しています。
+Sakura K2.7 の検証中はさらに品質指標として task 完走率・追加修正率・turn 数を記録します。
 
 ---
 
-### 3.5 DeepSeek V4 Flash — `30 / 70` (Ollama: 緊急フォールバック)
+## 7. チューニング方針
 
-- **月間推定リクエスト数**:
-  - OpenCode Go: **37,800 req/月**
-  - GOAT: **91,200 req/月**
+優先順位は次の順で判断します。
 
-#### 計算プロセス
-- Go: $37,800 / (37,800 + 91,200) \fallingdotseq 29.30\% \rightarrow \mathbf{30\%}$
-- GOAT: $91,200 / (37,800 + 91,200) \fallingdotseq 70.70\% \rightarrow \mathbf{70\%}$
+1. 実際の weekly / monthly quota burn
+2. 429 / fallback率
+3. task 完走率と turn 数
+4. 公開 Typical Requests
 
-> **GOAT 70% と Ollama 除外の根拠**:  
-> GOAT では DeepSeek V4 Flash の Cache Read 単価が極めて安価（$0.007 / M tokens）であり、エージェントコーディング特有の巨大キャッシュヒットの恩恵を最大化できます。また Go + GOAT で月約 129,000 req 相当となり、K3（1,470 req）の約88倍の容量があります。低単価な Flash モデルで Legacy Quota を消費するのを避け、K3/K2.7 などの高コストモデルへ Legacy 枠を集中させます。
-
----
-
-## 4. 配分比率一覧まとめ
-
-| モデル | Go 推定req/月 | GOAT 推定req/月 | Go : GOAT 正規化比 | 実設定 Weight | Ollama の位置づけ |
-| :--- | ---: | ---: | :---: | :--- | :--- |
-| **Kimi K2.7 Code** | 6,750 | 5,420 | 55.5% : 44.5% | **Ollama 40% / Go 33% / GOAT 27%** | 一次トラフィック (40%) |
-| **Kimi K3** | 490 | 980 | 33.3% : 66.7% | **Ollama 50% / Go 17% / GOAT 33%** | 一次トラフィック (50%) |
-| **GLM-5.2** | 4,300 | 4,740 | 47.6% : 52.4% | **Go 48% / GOAT 52%** | 緊急フォールバックのみ |
-| **GLM-5.3 Flash** | 7,900 | 23,600 | 25.1% : 74.9% | **Go 25% / GOAT 75%** | 緊急フォールバックのみ |
-| **DeepSeek V4 Flash** | 37,800 | 91,200 | 29.3% : 70.7% | **Go 30% / GOAT 70%** | 緊急フォールバックのみ |
-
----
-
-## 5. 実運用におけるモニタリングとチューニング指針
-
-Cloudflare AI Gateway の Percentage ルーティングは**リクエスト数単位**でトラフィックを分配します。しかし、実際の消費 Quota は「コンテキスト長（トークン数）」に大きく左右されます。
-
-運用開始後は、Cloudflare AI Gateway のメトリクスログから以下の3点を確認し、適宜 Weight を補正することを推奨します。
-
-1. **レート制限（HTTP 429）発生率**: 特定プロバイダーで突出して 429 が発生していないか
-2. **フォールバック発動率**: 一次プロバイダーの枯渇による副系への切り替え頻度
-3. **Token-Weighted 消費量**: リクエスト数だけでなく、Input / Cache Read / Output の実トークン消費量
-
-### チューニングの優先箇所
-Go と GOAT の比率は公式 Allowance に準拠しているため極めて安定的です。実運用で調整すべき主な変数は、**Kimi K2.7 の Ollama 40%** および **Kimi K3 の Ollama 50%** の妥当性検証となります。
+公開 Typical Requests は比較のための有用な参考値ですが、OmO / Superpowers の長大 context workloadでは実測を上位の根拠とします。
