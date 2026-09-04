@@ -14,6 +14,10 @@ Cloudflare AI Gateway の動的ルーティング定義と、GitHub Actions に�
 │   └── routing-weights-rationale.md # 配分比率の算出根拠・設計思想
 ├── routes/                   # 各モデルの動的ルーティング定義 (JSON)
 │   ├── deepseek-v4-flash.json
+│   ├── gemini-3.1-pro.json
+│   ├── gemini-3.5-flash-lite.json
+│   ├── gemini-3.7-flash.json
+│   ├── gemini-3.8-flash.json
 │   ├── glm-5.2.json
 │   ├── glm-5.3-flash.json
 │   ├── kimi-k2.7-code.json
@@ -34,6 +38,7 @@ Cloudflare AI Gateway の動的ルーティング定義と、GitHub Actions に�
 - `REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG`: OpenCode Go のカスタムプロバイダースラッグ
 - `REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG`: Command Code GOAT のカスタムプロバイダースラッグ
 
+※ Google AI Studio 等の Cloudflare AI Gateway 標準プロバイダー（`google-ai-studio`）を使用するルートは、カスタムプロバイダースラッグの置換不要で直接定義されます。
 ※ ルート作成 API を利用する場合、トップレベルの `id` フィールドは Cloudflare 側で自動生成されるため、デプロイスクリプト側で適切に処理されます。
 
 ---
@@ -42,6 +47,10 @@ Cloudflare AI Gateway の動的ルーティング定義と、GitHub Actions に�
 
 | ルート名 | トラフィック配分比率（プライマリ） | フォールバック構成 |
 | :--- | :--- | :--- |
+| **`gemini-3.8-flash`** | Google AI Studio 100% | 単一プロバイダー直接経路 (`gemini-3.8-flash`) |
+| **`gemini-3.7-flash`** | Google AI Studio 100% | 単一プロバイダー直接経路 (`gemini-3.7-flash`) |
+| **`gemini-3.5-flash-lite`** | Google AI Studio 100% | 単一プロバイダー直接経路 (`gemini-3.5-flash-lite`) |
+| **`gemini-3.1-pro`** | Google AI Studio 100% | 単一プロバイダー直接経路 (`gemini-3.1-pro-preview`) |
 | **`kimi-k2.7-code`** | Ollama 40% / OpenCode Go 33% / GOAT 27% | 相互フォールバック |
 | **`kimi-k3`** | Ollama 50% / OpenCode Go 17% / GOAT 33% | 相互フォールバック |
 | **`glm-5.2`** | OpenCode Go 48% / GOAT 52% | Ollama (緊急フォールバックのみ) |
@@ -52,10 +61,10 @@ Cloudflare AI Gateway の動的ルーティング定義と、GitHub Actions に�
 > 各プロバイダーへのトラフィック配分比率（Weight）の算出根拠、計算式、および運用時のチューニング指針についての詳細は [**トラフィック配分比率の算出根拠と設計思想**](docs/routing-weights-rationale.md) を参照してください。
 
 ### ルーティングの設計方針
-- **同一モデルでのフォールバック**: すべてのフォールバック先で、同一の LLM モデルを維持したまま別プロバイダーへ切り替わります。
-- **リトライ回数 `retries: 0`**: レート制限やプロバイダー障害発生時に、同一プロバイダーで無駄に時間を消費せず即座に次のプロバイダーへ切り替えるため、意図的に `0` に設定しています。
+- **同一モデルでのフォールバック**: 複数プロバイダーが存在するルートでは、同一の LLM モデルを維持したまま別プロバイダーへ切り替わります（Gemini ルートは標準の `google-ai-studio` 単一経路）。
+- **リトライ回数 `retries: 0`**: レート制限やプロバイダー障害発生時に、同一プロバイダーで無駄に時間を消費せず即座に次のプロバイダーへ切り替える（または即時レスポンスを返す）ため、意図的に `0` に設定しています。
 - **タイムアウト設定**:
-  - `kimi-k3`: 180秒（`180000`ms）
+  - `kimi-k3`, `gemini-3.1-pro`: 180秒（`180000`ms）
   - その他のルート: 120秒（`120000`ms）
   - ※ 重度の推論タスクで TTFT（Time to First Token）が長くなるプロバイダーがある場合は、必要に応じて `timeout` を調整してください。
 
