@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "deploy": "node scripts/deploy.mjs",
-    "dry-run": "node scripts/deploy.mjs --dry-run"
+    "dry-run": "node scripts/deploy.mjs --dry-run",
+    "analyze-logs": "node scripts/analyze-logs.mjs",
+    "test:log-analysis": "node scripts/test-log-analysis.mjs"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "^1.5.5-r.4"
   },
   "engines": {
     "node": ">=18.0.0"

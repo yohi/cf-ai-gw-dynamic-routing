@@ -8,6 +8,8 @@ on:
     paths:
       - "routes/**"
       - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/**"
   pull_request:
     branches:
@@ -16,6 +18,8 @@ on:
     paths:
       - "routes/**"
       - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/**"
   workflow_dispatch:
     inputs:
@@ -49,6 +53,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Test AI Gateway log analyzer
+        run: node scripts/test-log-analysis.mjs
 
       - name: Validate JSON syntax
         run: |
