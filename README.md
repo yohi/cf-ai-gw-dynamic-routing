@@ -62,6 +62,19 @@ Google AI Studio 等の Cloudflare AI Gateway 標準プロバイダー（`google
 > [!NOTE]
 > 配分・優先順位の算出根拠、実測に基づく方針変更、Sakura Kimi K2.7 の検証基準については [**ルーティング配分・優先順位の根拠と設計思想**](docs/routing-weights-rationale.md) を参照してください。
 
+### GLM-5.3（full）をルートに含めていない理由
+
+現時点では **`glm-5.2` と `glm-5.3-flash` を採用し、full 版の `glm-5.3` は意図的に未採用**です。
+
+理由は次のとおりです。
+
+- **GLM-5.2 と GLM-5.3 full は公開 token 単価が同水準でも、OpenCode Go / Command Code GOAT の subscription 内 allowance は GLM-5.2 の方がかなり厚い**ため、共有 quota を長持ちさせる用途では GLM-5.2 の方が有利です。
+- **高難度の汎用タスクは ChatGPT Plus の GPT-5.6 Luna `max` を比較的多く利用できる**ため、GLM-5.3 full の主なポジションと役割が重複します。
+- **GLM-5.3 Flash は別の役割が明確**で、DeepSeek V4 Flash より判断力・Agentic coding 寄りの高速モデルとして採用価値があります。
+- したがって現時点では、`GLM-5.2 = 中〜高難度 open model`、`GLM-5.3 Flash = 高速かつ比較的高判断力な agentic model` と役割を分離します。
+
+今後、実測で **Luna/max では不足するが Kimi K3 / GPT-5.6 Sol を使うほどではない高難度タスク**に対して GLM-5.2 が明確に不足する場合は、`glm-5.3` full を独立した Dynamic Route として追加する余地があります。
+
 ### ルーティングの設計方針
 
 - **同一モデルを維持**: 1つの Dynamic Route 内では LLM モデルを変更せず、同一モデルを提供する別プロバイダーへ切り替えます。
