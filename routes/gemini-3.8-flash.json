@@ -1,0 +1,38 @@
+{
+  "id": "REPLACE_WITH_ROUTE_ID_GEMINI_3_8_FLASH",
+  "name": "gemini-3.8-flash",
+  "elements": [
+    {
+      "id": "start",
+      "type": "start",
+      "outputs": {
+        "next": {
+          "elementId": "google_ai_studio_primary"
+        }
+      }
+    },
+    {
+      "id": "google_ai_studio_primary",
+      "type": "model",
+      "properties": {
+        "provider": "google-ai-studio",
+        "model": "gemini-3.8-flash",
+        "timeout": 120000,
+        "retries": 0
+      },
+      "outputs": {
+        "success": {
+          "elementId": "end"
+        },
+        "fallback": {
+          "elementId": "end"
+        }
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "outputs": {}
+    }
+  ]
+}
