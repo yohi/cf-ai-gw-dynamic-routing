@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   analyzeLogRecord,
@@ -8,6 +13,7 @@ import {
   buildReportData,
   buildSessionDeltas,
   extractProviderUsage,
+  stableStringify,
 } from './lib/log-analysis.mjs';
 
 function makeLog(id, tokensIn, provider = 'ollama', metadata = { session: 's1' }) {
@@ -90,6 +96,7 @@ assert.equal(analyzed1.request.session_source, 'metadata:session');
 assert.equal(analyzed1.request.provider_cache_read_tokens, 900);
 assert.equal(analyzed2.request.provider_cache_read_tokens, 800);
 assert.equal(analyzed2.request.provider_cache_write_tokens, 100);
+assert.equal(stableStringify({ a: 1, A: 2 }), '{"a":1,"A":2}');
 
 const requests = [analyzed1.request, analyzed2.request];
 const components = [...analyzed1.components, ...analyzed2.components];
@@ -128,5 +135,21 @@ assert.equal(report.requests, 2);
 assert.equal(report.sessions, 1);
 assert.ok(report.component_summary.length > 0);
 assert.ok(Array.isArray(report.recommendations));
+
+const tempDir = mkdtempSync(join(tmpdir(), 'cf-ai-gw-sonar-'));
+try {
+  const fixturePath = join(tempDir, 'fixture.json');
+  const outputDir = join(tempDir, 'output');
+  writeFileSync(fixturePath, JSON.stringify([{ log: makeLog('4', 500), request: request1, response: {} }]));
+  const result = spawnSync(
+    process.execPath,
+    ['scripts/analyze-logs.mjs', '--fixture', fixturePath, '--store-raw', '--no-duckdb', '--out-dir', outputDir],
+    { cwd: fileURLToPath(new URL('../', import.meta.url)), encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^\[raw\] saving gzip bundles under raw output directory$/m);
+} finally {
+  rmSync(tempDir, { recursive: true, force: true });
+}
 
 console.log('✓ log-analysis self-test passed');

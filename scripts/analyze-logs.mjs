@@ -407,7 +407,7 @@ async function main() {
   if (!records.length) throw new Error('No logs matched the requested range');
 
   if (options.storeRaw) {
-    console.log(`[raw] saving ${records.length} gzip bundles under ${join(options.outDir, 'raw')}`);
+    console.log('[raw] saving gzip bundles under raw output directory');
     await mapConcurrent(records, 4, (record) => writeRawBundle(options.outDir, record));
   }
 
