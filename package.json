@@ -10,7 +10,7 @@
     "test:log-analysis": "node scripts/test-log-analysis.mjs"
   },
   "dependencies": {
-    "@duckdb/node-api": "^1.5.5"
+    "@duckdb/node-api": "^1.5.5-r.4"
   },
   "engines": {
     "node": ">=18.0.0"
