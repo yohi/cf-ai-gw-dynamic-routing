@@ -53,6 +53,7 @@ function checkEnv() {
     "OLLAMA_CUSTOM_PROVIDER_SLUG",
     "OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
     "COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
+    "SAKURA_AI_CUSTOM_PROVIDER_SLUG",
   ];
 
   if (!isDryRun) {
@@ -69,6 +70,7 @@ function replacePlaceholders(jsonString) {
     REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG: process.env.OLLAMA_CUSTOM_PROVIDER_SLUG || "ollama-placeholder",
     REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG: process.env.OPENCODE_GO_CUSTOM_PROVIDER_SLUG || "opencode-go-placeholder",
     REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG: process.env.COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG || "goat-placeholder",
+    REPLACE_WITH_SAKURA_AI_CUSTOM_PROVIDER_SLUG: process.env.SAKURA_AI_CUSTOM_PROVIDER_SLUG || "sakura-ai-placeholder",
   };
 
   let result = jsonString;
