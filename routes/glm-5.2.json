@@ -7,60 +7,12 @@
       "type": "start",
       "outputs": {
         "next": {
-          "elementId": "split"
+          "elementId": "ollama_primary"
         }
       }
     },
     {
-      "id": "split",
-      "type": "percentage",
-      "outputs": {
-        "48%": {
-          "elementId": "go_primary"
-        },
-        "52%": {
-          "elementId": "goat_primary"
-        }
-      }
-    },
-    {
-      "id": "go_primary",
-      "type": "model",
-      "properties": {
-        "provider": "REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
-        "model": "glm-5.2",
-        "timeout": 120000,
-        "retries": 0
-      },
-      "outputs": {
-        "success": {
-          "elementId": "end"
-        },
-        "fallback": {
-          "elementId": "goat_after_go"
-        }
-      }
-    },
-    {
-      "id": "goat_after_go",
-      "type": "model",
-      "properties": {
-        "provider": "REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
-        "model": "zai-org/glm-5.2",
-        "timeout": 120000,
-        "retries": 0
-      },
-      "outputs": {
-        "success": {
-          "elementId": "end"
-        },
-        "fallback": {
-          "elementId": "ollama_emergency_after_go"
-        }
-      }
-    },
-    {
-      "id": "ollama_emergency_after_go",
+      "id": "ollama_primary",
       "type": "model",
       "properties": {
         "provider": "REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG",
@@ -73,12 +25,12 @@
           "elementId": "end"
         },
         "fallback": {
-          "elementId": "end"
+          "elementId": "goat_fallback"
         }
       }
     },
     {
-      "id": "goat_primary",
+      "id": "goat_fallback",
       "type": "model",
       "properties": {
         "provider": "REPLACE_WITH_COMMAND_CODE_GOAT_CUSTOM_PROVIDER_SLUG",
@@ -91,33 +43,15 @@
           "elementId": "end"
         },
         "fallback": {
-          "elementId": "go_after_goat"
+          "elementId": "go_fallback"
         }
       }
     },
     {
-      "id": "go_after_goat",
+      "id": "go_fallback",
       "type": "model",
       "properties": {
         "provider": "REPLACE_WITH_OPENCODE_GO_CUSTOM_PROVIDER_SLUG",
-        "model": "glm-5.2",
-        "timeout": 120000,
-        "retries": 0
-      },
-      "outputs": {
-        "success": {
-          "elementId": "end"
-        },
-        "fallback": {
-          "elementId": "ollama_emergency_after_goat"
-        }
-      }
-    },
-    {
-      "id": "ollama_emergency_after_goat",
-      "type": "model",
-      "properties": {
-        "provider": "REPLACE_WITH_OLLAMA_CUSTOM_PROVIDER_SLUG",
         "model": "glm-5.2",
         "timeout": 120000,
         "retries": 0
