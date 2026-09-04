@@ -9,6 +9,7 @@ on:
       - "routes/**"
       - "scripts/**"
       - "package.json"
+      - "package-lock.json"
       - ".github/workflows/**"
   pull_request:
     branches:
@@ -18,6 +19,7 @@ on:
       - "routes/**"
       - "scripts/**"
       - "package.json"
+      - "package-lock.json"
       - ".github/workflows/**"
   workflow_dispatch:
     inputs:

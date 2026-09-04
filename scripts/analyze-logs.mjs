@@ -14,7 +14,7 @@ import {
   renderMarkdownReport,
 } from './lib/log-analysis.mjs';
 
-const CF_API_BASE = 'https://api.cloudflare.com/client/v4';
+const CF_API_BASE = process.env.CLOUDFLARE_API_BASE || 'https://api.cloudflare.com/client/v4';
 
 function usage() {
   console.log(`Usage:
@@ -284,6 +284,19 @@ async function loadFixture(path) {
   return records;
 }
 
+function sortRecordsChronologically(records) {
+  return records.sort((left, right) => {
+    const leftMs = Date.parse(left?.log?.created_at ?? '');
+    const rightMs = Date.parse(right?.log?.created_at ?? '');
+    const leftValid = Number.isFinite(leftMs);
+    const rightValid = Number.isFinite(rightMs);
+    if (!leftValid && !rightValid) return 0;
+    if (!leftValid) return 1;
+    if (!rightValid) return -1;
+    return leftMs - rightMs;
+  });
+}
+
 async function writeJsonLines(path, rows) {
   await mkdir(dirname(path), { recursive: true });
   const text = rows.map((row) => JSON.stringify(row)).join('\n');
@@ -405,6 +418,7 @@ async function main() {
   await mkdir(options.outDir, { recursive: true });
   const records = options.fixture ? await loadFixture(options.fixture) : await collectLive(options);
   if (!records.length) throw new Error('No logs matched the requested range');
+  sortRecordsChronologically(records);
 
   if (options.storeRaw) {
     console.log('[raw] saving gzip bundles under raw output directory');

@@ -145,6 +145,39 @@ function collectMessages(body) {
   return [];
 }
 
+function normalizeMessages(messages) {
+  const normalized = [];
+  for (const item of messages) {
+    if (!item || typeof item !== 'object' || !Array.isArray(item.content)) {
+      normalized.push(item);
+      continue;
+    }
+
+    let regularParts = [];
+    const flushRegularParts = () => {
+      if (regularParts.length) normalized.push({ ...item, content: regularParts });
+      regularParts = [];
+    };
+
+    for (const part of item.content) {
+      if (!part || typeof part !== 'object' || part.type !== 'tool_result') {
+        regularParts.push(part);
+        continue;
+      }
+
+      flushRegularParts();
+      const toolResult = { ...part, role: 'tool' };
+      if (toolResult.tool_call_id === undefined) {
+        const callId = part.tool_use_id ?? part.call_id ?? part.id;
+        if (callId !== undefined) toolResult.tool_call_id = callId;
+      }
+      normalized.push(toolResult);
+    }
+    flushRegularParts();
+  }
+  return normalized;
+}
+
 function collectTools(body) {
   if (!body || typeof body !== 'object') return [];
   if (Array.isArray(body.tools)) return body.tools;
@@ -380,6 +413,7 @@ function allocateToActual(components, artifacts, actualTokensIn) {
 export function analyzeLogRecord(log, requestPayload, responsePayload, options = {}) {
   const body = findRequestBody(requestPayload) ?? {};
   const messages = collectMessages(body);
+  const normalizedMessages = normalizeMessages(messages);
   const tools = collectTools(body);
   const metadata = parseMetadata(log.metadata);
   const subagentTools = new Set(
@@ -403,7 +437,7 @@ export function analyzeLogRecord(log, requestPayload, responsePayload, options =
 
   const toolCallMap = buildToolCallMap(messages);
 
-  messages.forEach((item, index) => {
+  normalizedMessages.forEach((item, index) => {
     const role = messageRole(item);
     const estimated = estimateTokens(item);
     let component = 'assistant_history';
