@@ -1,4 +1,5 @@
 node_modules/
+admin.env
 data/ai-gateway/
 *.duckdb
 *.duckdb.wal

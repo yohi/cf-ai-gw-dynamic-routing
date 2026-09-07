@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  CF_ROUTE_ALREADY_EXISTS_CODE,
+  createRoute,
+  getExistingRoutes,
+  updateRoute,
+} from "./lib/cloudflare-routes.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -39,9 +45,6 @@ function getRouteFiles() {
   return [];
 }
 
-const CF_API_BASE = process.env.CLOUDFLARE_API_BASE || "https://api.cloudflare.com/client/v4";
-const CF_ROUTE_ALREADY_EXISTS_CODE = "7005";
-
 function checkEnv() {
   const required = [
     "CLOUDFLARE_API_TOKEN",
@@ -78,111 +81,6 @@ function replacePlaceholders(jsonString) {
     result = result.replaceAll(placeholder, value);
   }
   return result;
-}
-
-async function cfRequest(endpoint, options = {}) {
-  const url = `${CF_API_BASE}${endpoint}`;
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    data = {};
-  }
-
-  if (!response.ok || (!Array.isArray(data) && !data.success)) {
-    const errorMsg = data.errors?.map((e) => `[${e.code}] ${e.message}`).join(", ") || response.statusText;
-    throw new Error(`Cloudflare API Error (${response.status}): ${errorMsg}`);
-  }
-
-  return data;
-}
-
-function extractRoutes(data) {
-  if (Array.isArray(data)) {
-    return data;
-  }
-  if (Array.isArray(data?.data?.routes)) {
-    return data.data.routes;
-  }
-  if (Array.isArray(data?.result)) {
-    return data.result;
-  }
-  if (Array.isArray(data?.result?.routes)) {
-    return data.result.routes;
-  }
-  if (Array.isArray(data?.routes)) {
-    return data.routes;
-  }
-  return [];
-}
-
-function getRoutesEndpoint(accountId, gatewayId, routeId = null) {
-  const base = `/accounts/${accountId}/ai-gateway/gateways/${gatewayId}/routes`;
-  return routeId ? `${base}/${routeId}` : base;
-}
-
-async function getExistingRoutes(accountId, gatewayId) {
-  try {
-    const allRoutes = [];
-    let page = 1;
-    const perPage = 50;
-    const maxPages = 100;
-
-    while (page <= maxPages) {
-      const endpoint = `${getRoutesEndpoint(accountId, gatewayId)}?page=${page}&per_page=${perPage}`;
-      const data = await cfRequest(endpoint);
-      const routes = extractRoutes(data);
-
-      allRoutes.push(...routes);
-
-      const totalPages = data.result_info?.total_pages;
-      if (typeof totalPages === "number") {
-        if (page >= totalPages || routes.length === 0) {
-          break;
-        }
-      } else if (routes.length < perPage) {
-        break;
-      }
-
-      page++;
-    }
-
-    return allRoutes;
-  } catch (err) {
-    console.error(`Failed to fetch existing routes: ${err.message}`);
-    throw err;
-  }
-}
-
-async function createRoute(accountId, gatewayId, routeName, payload) {
-  console.log(`✨ Creating new route "${routeName}"...`);
-  const data = await cfRequest(getRoutesEndpoint(accountId, gatewayId), {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  const routeResult = data.result || data;
-  console.log(`✅ Successfully created route "${routeName}" (ID: ${routeResult?.id || "unknown"})`);
-  return routeResult;
-}
-
-async function updateRoute(accountId, gatewayId, routeId, routeName, payload) {
-  console.log(`🔄 Updating existing route "${routeName}" (ID: ${routeId})...`);
-  const data = await cfRequest(getRoutesEndpoint(accountId, gatewayId, routeId), {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
-  const routeResult = data.result || data;
-  console.log(`✅ Successfully updated route "${routeName}" (ID: ${routeResult?.id || routeId})`);
-  return routeResult;
 }
 
 async function main() {
