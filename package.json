@@ -6,6 +6,7 @@
   "scripts": {
     "deploy": "node scripts/deploy.mjs",
     "dry-run": "node scripts/deploy.mjs --dry-run",
+    "test:deploy": "node scripts/test-deploy.mjs",
     "analyze-logs": "node scripts/analyze-logs.mjs",
     "test:log-analysis": "node scripts/test-log-analysis.mjs"
   },

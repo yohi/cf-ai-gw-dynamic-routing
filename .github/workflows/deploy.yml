@@ -57,6 +57,9 @@ jobs:
       - name: Test AI Gateway log analyzer
         run: node scripts/test-log-analysis.mjs
 
+      - name: Test Dynamic Route deployment flow
+        run: node scripts/test-deploy.mjs
+
       - name: Validate JSON syntax
         run: |
           node -e '
